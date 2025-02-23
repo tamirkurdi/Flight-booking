@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Booking Form</title>
+    <style>
+        /* Add your CSS styles here */
+    </style>
+</head>
+<body>
+    <form id="booking-form" method="post">
+        <!-- Name Field -->
+        <label for="name">Name:</label>
+        <input type="text" id="name" name="name" autocomplete="name" required>
+
+        <!-- Origin Text Input -->
+        <label for="origin">Origin:</label>
+        <input type="text" id="origin" name="origin" autocomplete="off" required>
+        <div id="origin-results" style="display: none;">
+            <ul id="origin-results-list"></ul>
+        </div>
+
+        <!-- Destination Text Input -->
+        <label for="destination">Destination:</label>
+        <input type="text" id="destination" name="destination" autocomplete="off" required>
+        <div id="destination-results" style="display: none;">
+            <ul id="destination-results-list"></ul>
+        </div>
+
+        <!-- Departure Date Field -->
+        <label for="departure-date">Departure Date:</label>
+        <input type="date" id="departure-date" name="departure-date" autocomplete="off" required min="">
+
+        <!-- Return Date Field -->
+        <label for="return-date">Return Date:</label>
+        <input type="date" id="return-date" name="return-date" autocomplete="off" min="">
+
+        <!-- Trip Type Radio Buttons -->
+        <div class="radio-group">
+            <label>Trip Type:</label>
+            <label><input type="radio" id="one-way" name="trip-type" value="one-way" required> One Way</label>
+            <label><input type="radio" id="return" name="trip-type" value="return"> Return</label>
+            <label><input type="radio" id="multi-city" name="trip-type" value="multi-city"> Multi-City</label>
+        </div>
+
+        <!-- Number of Passengers Dropdown -->
+        <label for="passengers">Number of Passengers:</label>
+        <select id="passengers" name="passengers" required>
+            <option value="">Select Passengers</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6+</option>
+        </select>
+
+        <!-- Submit Button -->
+        <button type="submit">Search Flights</button>
+    </form>
+
+    <div id="success-message" style="display: none; color: green; font-weight: bold;">
+        Thank you! Your booking has been submitted.
+    </div>
+
+    <div id="flight-results" style="display: none;">
+        <h2>Flight Results</h2>
+        <table id="flight-table">
+            <thead>
+                <tr>
+                    <th>Airline</th>
+                    <th>Departure</th>
+                    <th>Arrival</th>
+                    <th>Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Flight results will be populated here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Set the min attribute for date inputs to today's date
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('departure-date').min = today;
+        document.getElementById('return-date').min = today;
+
+        // Function to get an access token from Amadeus API
+        async function getAccessToken() {
+            const url = 'https://test.api.amadeus.com/v1/security/oauth2/token';
+            const params = new URLSearchParams();
+            params.append('grant_type', 'client_credentials');
+            params.append('client_id', 'YH0oLUGf7C9hyQsl8BVP8fdaVRBhT2bb'); // Your API key
+            params.append('client_secret', '6mLJcWsSRiDoAfyQ'); // Your API secret
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: params,
+            });
+
+            const data = await response.json();
+            return data.access_token;
+        }
+
+        // Function to fetch airports and cities from Amadeus API
+        async function fetchLocations(searchQuery, resultsListId) {
+            const accessToken = await getAccessToken();
+
+            const url = `https://test.api.amadeus.com/v1/reference-data/locations?subType=AIRPORT,CITY&keyword=${searchQuery}`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                },
+            });
+
+            const data = await response.json();
+            const resultsList = document.getElementById(resultsListId);
+
+            // Clear previous results
+            resultsList.innerHTML = '';
+
+            // Populate the results list
+            if (data.data && data.data.length > 0) {
+                data.data.forEach(location => {
+                    const li = document.createElement('li');
+                    li.textContent = `${location.name} (${location.iataCode})`;
+                    li.addEventListener('click', () => {
+                        // Set the selected location in the input field
+                        const inputField = document.getElementById(resultsListId.replace('-results-list', ''));
+                        inputField.value = `${location.name} (${location.iataCode})`;
+
+                        // Hide the results list
+                        const resultsContainer = document.getElementById(resultsListId.replace('-list', ''));
+                        resultsContainer.style.display = 'none';
+                    });
+                    resultsList.appendChild(li);
+                });
+
+                // Show the results list
+                const resultsContainer = document.getElementById(resultsListId.replace('-list', ''));
+                resultsContainer.style.display = 'block';
+            } else {
+                // Hide the results list if no locations are found
+                const resultsContainer = document.getElementById(resultsListId.replace('-list', ''));
+                resultsContainer.style.display = 'none';
+            }
+        }
+
+        // Fetch locations when the user types in the origin or destination fields
+        document.getElementById('origin').addEventListener('input', async () => {
+            const searchQuery = document.getElementById('origin').value;
+            if (searchQuery.length >= 3) { // Only search if the user has typed at least 3 characters
+                await fetchLocations(searchQuery, 'origin-results-list');
+            } else {
+                // Hide the results list if the search query is too short
+                const resultsContainer = document.getElementById('origin-results');
+                resultsContainer.style.display = 'none';
+            }
+        });
+
+        document.getElementById('destination').addEventListener('input', async () => {
+            const searchQuery = document.getElementById('destination').value;
+            if (searchQuery.length >= 3) { // Only search if the user has typed at least 3 characters
+                await fetchLocations(searchQuery, 'destination-results-list');
+            } else {
+                // Hide the results list if the search query is too short
+                const resultsContainer = document.getElementById('destination-results');
+                resultsContainer.style.display = 'none';
+            }
+        });
+
+        // Handle form submission
+        document.getElementById('booking-form').addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            // Disable the button to prevent duplicate submissions
+            const submitButton = document.querySelector('#booking-form button');
+            submitButton.disabled = true;
+            submitButton.innerText = 'Searching...';
+
+            // Get form values
+            const origin = document.getElementById('origin').value;
+            const destination = document.getElementById('destination').value;
+            const departureDate = document.getElementById('departure-date').value;
+            const returnDate = document.getElementById('return-date').value;
+            const passengers = document.getElementById('passengers').value;
+            const tripType = document.querySelector('input[name="trip-type"]:checked');
+
+            // Get today's date (without time for accurate comparison)
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            // Validation
+            if (origin === destination) {
+                alert('Origin and destination cannot be the same.');
+                submitButton.disabled = false;
+                submitButton.innerText = 'Search Flights';
+                return;
+            }
+
+            if (!tripType) {
+                alert('Please select a trip type.');
+                submitButton.disabled = false;
+                submitButton.innerText = 'Search Flights';
+                return;
+            }
+
+            if (new Date(departureDate) < today) {
+                alert('Departure date cannot be before today.');
+                submitButton.disabled = false;
+                submitButton.innerText = 'Search Flights';
+                return;
+            }
+
+            if (tripType.value === 'return' && !returnDate) {
+                alert('Please provide a return date for return trips.');
+                submitButton.disabled = false;
+                submitButton.innerText = 'Search Flights';
+                return;
+            }
+
+            if (returnDate && new Date(returnDate) < today) {
+                alert('Return date cannot be before today.');
+                submitButton.disabled = false;
+                submitButton.innerText = 'Search Flights';
+                return;
+            }
+
+            if (returnDate && new Date(returnDate) <= new Date(departureDate)) {
+                alert('Return date must be after the departure date.');
+                submitButton.disabled = false;
+                submitButton.innerText = 'Search Flights';
+                return;
+            }
+
+            try {
+                // Search for flights using AJAX
+                const flightOffers = await searchFlights(origin, destination, departureDate, returnDate, passengers);
+
+                // Display the flight offers
+                displayFlightResults(flightOffers);
+
+                // Show success message
+                document.getElementById('success-message').style.display = 'block';
+            } catch (error) {
+                console.error('Error:', error);
+                alert('There was a problem searching for flights.');
+            } finally {
+                // Re-enable the button
+                submitButton.disabled = false;
+                submitButton.innerText = 'Search Flights';
+            }
+        });
+    </script>
+</body>
+</html>
